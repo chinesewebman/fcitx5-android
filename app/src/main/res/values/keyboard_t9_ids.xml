@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="button_mini_space" type="id"/>
+    <!-- NineKey (T9) keyboard view IDs -->
+    <item name="button_ninekey_alpha" type="id"/>
+    <item name="button_ninekey_punct" type="id"/>
+    <item name="button_ninekey_space" type="id"/>
+    <item name="button_ninekey_switch" type="id"/>
+    <item name="button_ninekey_sym" type="id"/>
 </resources>

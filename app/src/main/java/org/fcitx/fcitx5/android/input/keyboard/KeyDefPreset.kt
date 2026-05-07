@@ -111,7 +111,9 @@ class LayoutSwitchKey(
     displayText: String,
     val to: String = "",
     percentWidth: Float = 0.15f,
-    variant: Variant = Variant.Alternative
+    variant: Variant = Variant.Alternative,
+    /** Optional long-press target layout name (e.g. NineKey.Name) */
+    val longPressTo: String = ""
 ) : KeyDef(
     Appearance.Text(
         displayText,
@@ -120,9 +122,12 @@ class LayoutSwitchKey(
         percentWidth = percentWidth,
         variant = variant
     ),
-    setOf(
-        Behavior.Press(KeyAction.LayoutSwitchAction(to))
-    )
+    buildSet {
+        add(Behavior.Press(KeyAction.LayoutSwitchAction(to)))
+        if (longPressTo.isNotEmpty()) {
+            add(Behavior.LongPress(KeyAction.LayoutSwitchAction(longPressTo)))
+        }
+    }
 )
 
 class BackspaceKey(
