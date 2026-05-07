@@ -17,15 +17,12 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
 /**
  * 9-key alphabet key.
  * Shows the full [letters] combo on the key (e.g. "ABC").
- * - Long-press: shows popup menu with all letters (user selects)
- * - First tap: shows popup (no commit yet)
- * - 500ms timeout after last press: auto-commits first letter
- * - Popup selection: commits chosen letter
  *
- * Behavior.Press uses DeleteSelectionAction(0) as a no-op placeholder to
- * prevent immediate commit while still allowing the key to be "clicked".
+ * Uses Behavior.Press(CommitAction) so the normal keyboard flow fires — but we
+ * intercept it in NineKeyKeyboard.onAction(CommitAction), return without calling
+ * super, and handle the popup + 500ms auto-commit ourselves.
  *
- * @param letters        Full letter combo shown on the key (e.g. "ABC")
+ * @param letters        Full letter combo shown on the key (e.g. "ABC", "DEF")
  * @param digitHint      The digit shown as hint (e.g. "2" for ABC)
  * @param viewIdRes      Unique view ID for this key
  */
@@ -37,7 +34,7 @@ class NineKeyAlphabetKey(
     Appearance.Text(
         displayText = letters,
         textSize = 24f,
-        percentWidth = 0f,  // fill remaining space equally
+        percentWidth = 0f,
         variant = KeyDef.Appearance.Variant.Normal,
         border = KeyDef.Appearance.Border.Default,
         margin = true,
@@ -45,17 +42,15 @@ class NineKeyAlphabetKey(
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
-        // No-op: we intercept in onAction() and handle popup/commit ourselves.
-        // Do NOT use CommitAction here — CommonKeyActionListener.commitAndReset()
-        // resets the keyboard on CommitAction.
-        KeyDef.Behavior.Press(KeyAction.NoOpAction)
+        // First letter — intercepted in NineKeyKeyboard.onAction(CommitAction)
+        KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
     ),
     popup = arrayOf(
-        // Long-press shows menu with all letters for user to select
+        // Long-press: show popup with all letters
         KeyDef.Popup.Menu(
             items = letters.mapIndexed { idx, ch ->
                 KeyDef.Popup.Menu.Item(
-                    label = ch.toString(),
+                    label = "$ch${if (idx == 0) " ✓" else ""}",
                     icon = 0,
                     action = KeyAction.CommitAction(ch.toString())
                 )
@@ -99,7 +94,7 @@ class NineKeySpaceKey : KeyDef(
     Appearance.Text(
         displayText = "空格",
         textSize = 14f,
-        percentWidth = 0f,  // fill remaining space
+        percentWidth = 0f,
         variant = KeyDef.Appearance.Variant.Normal,
         border = KeyDef.Appearance.Border.Special,
         margin = true,
@@ -188,7 +183,7 @@ class NineKeyLayoutSwitchKey(
 )
 
 /**
- * 9-key symbol key (shown as "符").
+ * 9-key symbol key (shown as "*")
  */
 class NineKeySymbolKey(
     displayText: String = "符",
