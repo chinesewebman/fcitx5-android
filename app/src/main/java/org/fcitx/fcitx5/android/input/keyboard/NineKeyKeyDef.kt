@@ -17,7 +17,14 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
 /**
  * 9-key alphabet key.
  * Shows the full [letters] combo on the key (e.g. "ABC").
- * Multi-press cycles through all [letters] in the popup, NOT on the key label.
+ * - Long-press: shows popup menu with all letters (user selects)
+ * - First tap: shows popup (no commit yet)
+ * - 500ms timeout after last press: auto-commits first letter
+ * - Popup selection: commits chosen letter
+ *
+ * Behavior.Press uses DeleteSelectionAction(0) as a no-op placeholder to
+ * prevent immediate commit while still allowing the key to be "clicked".
+ *
  * @param letters        Full letter combo shown on the key (e.g. "ABC")
  * @param digitHint      The digit shown as hint (e.g. "2" for ABC)
  * @param viewIdRes      Unique view ID for this key
@@ -38,10 +45,22 @@ class NineKeyAlphabetKey(
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
-        KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
+        // No-op placeholder — NineKeyKeyboard intercepts via onAction
+        // and manages popup/commit manually. Using DeleteSelectionAction(0)
+        // because it's handled as a no-op in CommonKeyActionListener.
+        KeyDef.Behavior.Press(KeyAction.DeleteSelectionAction(0))
     ),
     popup = arrayOf(
-        KeyDef.Popup.AltPreview(letters.first().toString(), digitHint)
+        // Long-press shows menu with all letters for user to select
+        KeyDef.Popup.Menu(
+            items = letters.mapIndexed { idx, ch ->
+                KeyDef.Popup.Menu.Item(
+                    label = ch.toString(),
+                    icon = 0,
+                    action = KeyAction.CommitAction(ch.toString())
+                )
+            }.toTypedArray()
+        )
     )
 )
 
@@ -169,7 +188,7 @@ class NineKeyLayoutSwitchKey(
 )
 
 /**
- * 9-key symbol key (shown as "*" or "符").
+ * 9-key symbol key (shown as "符").
  */
 class NineKeySymbolKey(
     displayText: String = "符",

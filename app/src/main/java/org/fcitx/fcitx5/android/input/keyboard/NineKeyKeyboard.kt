@@ -16,17 +16,18 @@ import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.PopupAction
-import org.fcitx.fcitx5.android.input.popup.PopupActionListener
 
 /**
  * 9-key (T9 / 九宫格) keyboard layout.
  *
- * Multi-press letter cycling:
- * - Press once → first letter (e.g. A)
- * - Press again within 500ms → cycle to next letter (B, then C...)
- * - After 500ms timeout → commit the currently selected letter and reset
+ * UX flow for alphabet keys:
+ * - Tap once: shows popup menu with all letters (✓ on first letter)
+ * - 500ms: auto-commits the first letter (unless user selects different one)
+ * - Tap same key again within 500ms: cycles ✓ to next letter
+ * - Tap different key: commits current selection, starts new popup
+ * - In popup: tap a letter → commits that letter immediately
  *
- * The popup shows all available letters with a ✓ on the currently selected one.
+ * The key label always shows the full combo (ABC, DEF, etc.) — never changes.
  */
 @SuppressLint("ViewConstructor")
 class NineKeyKeyboard(
@@ -37,8 +38,8 @@ class NineKeyKeyboard(
     companion object {
         const val Name = "NineKey"
 
-        /** Time window (ms) for cycling through letters on the same key */
-        private const val MULTI_PRESS_DELAY = 500L
+        /** Time window (ms) before auto-committing the pending letter */
+        private const val AUTO_COMMIT_DELAY = 500L
 
         /**
          * 9-key layout:
@@ -77,152 +78,156 @@ class NineKeyKeyboard(
 
     // ── Multi-press state ──────────────────────────────────────────────────
 
-    /** Maps viewId → current multi-press state for that key */
-    private val multiPressState = mutableMapOf<Int, MultiPressState>()
-
-    private data class MultiPressState(
-        val keyDef: NineKeyAlphabetKey,
-        var pressCount: Int = 0,
-        var currentLetter: String = keyDef.letters.first().toString()
-    )
+    /** The currently active (pending) NineKeyAlphabetKey, or null if none */
+    private var activeKeyDef: NineKeyAlphabetKey? = null
+    /** The view ID of the currently active key */
+    private var activeViewId: Int = -1
+    /** Index of the currently selected letter (for cycling) */
+    private var selectedLetterIndex: Int = 0
 
     private val handler = Handler(Looper.getMainLooper())
-    private val commitRunnable = Runnable { commitCurrentLetter() }
-
-    // ── Key view bindings ──────────────────────────────────────────────────
-
-    val space: TextKeyView by lazy { findViewById(R.id.button_ninekey_space) }
-
-    private val showLangSwitchKey = AppPrefs.getInstance().keyboard.showLangSwitchKey
-
-    @Keep
-    private val showLangSwitchKeyListener = ManagedPreference.OnChangeListener<Boolean> { _, _ ->
-        // NineKey doesn't have a lang key in the default layout
-    }
-
-    init {
-        showLangSwitchKey.registerOnChangeListener(showLangSwitchKeyListener)
+    private val autoCommitRunnable = Runnable {
+        commitCurrentLetter()
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
+    @Keep
+    private val showLangSwitchKeyListener = ManagedPreference.OnChangeListener<Boolean> { _, _ ->
+        // NineKey has no language key
+    }
+
+    init {
+        AppPrefs.getInstance().keyboard.showLangSwitchKey.registerOnChangeListener(showLangSwitchKeyListener)
+    }
+
     override fun onAttach() {
-        multiPressState.clear()
-        handler.removeCallbacks(commitRunnable)
+        // IMPORTANT: override alphabet key click listeners BEFORE any interaction.
+        // BaseKeyboard's init{} set Behavior.Press listeners that commit immediately.
+        // We replace them with popup-aware handlers.
+        bindAlphabetKeys()
     }
 
     override fun onDetach() {
-        multiPressState.clear()
-        handler.removeCallbacks(commitRunnable)
+        resetState()
     }
 
-    // ── Multi-press via onAction interception ───────────────────────────────
+    private fun resetState() {
+        activeKeyDef = null
+        activeViewId = -1
+        selectedLetterIndex = 0
+        handler.removeCallbacks(autoCommitRunnable)
+    }
+
+    // ── Bind alphabet keys to popup-aware click handlers ───────────────────
     //
-    // KeyView's built-in click fires a CommitAction(primaryLetter) → onAction().
-    // We intercept it here to manage multi-press cycling, then commit via
-    // keyActionListener when the 500ms timeout fires.
+    // BaseKeyboard.createKeyView() sets setOnClickListener for Behavior.Press.
+    // Since onAttach() runs after init{}, we can call setOnClickListener again
+    // to OVERRIDE the default listener and replace it with our popup logic.
 
-    override fun onAction(
-        action: KeyAction,
-        source: KeyActionListener.Source
-    ) {
-        when (action) {
-            is KeyAction.CommitAction -> {
-                // Find which NineKey alphabet key this commit came from
-                val viewId = findAlphabetKeyViewId(action.text)
-                if (viewId != -1) {
-                    // Cancel any pending commit
-                    handler.removeCallbacks(commitRunnable)
-
-                    // Get or create state for this key
-                    val keyDef = Layout.flatten()
-                        .filterIsInstance<NineKeyAlphabetKey>()
-                        .first { findViewById<KeyView>(it.viewIdRes).id == viewId }
-
-                    val state = multiPressState.getOrPut(viewId) {
-                        MultiPressState(keyDef)
-                    }
-
-                    // Cycle to next letter
-                    state.pressCount++
-                    val idx = (state.pressCount - 1) % keyDef.letters.length
-                    state.currentLetter = keyDef.letters.substring(idx, idx + 1)
-
-                    // Show popup with all letters, ✓ on selected
-                    val view = findViewById<KeyView>(viewId)
-                    showLetterPopup(view, viewId, keyDef.letters, idx)
-
-                    // Schedule auto-commit if no more presses arrive
-                    handler.postDelayed(commitRunnable, MULTI_PRESS_DELAY)
-                    return  // Don't call super — we're holding the commit
+    private fun bindAlphabetKeys() {
+        val alphabetDefs = Layout.flatten().filterIsInstance<NineKeyAlphabetKey>()
+        for (def in alphabetDefs) {
+            val view = findViewById<KeyView>(def.viewIdRes)
+            if (view != null) {
+                // Override the Behavior.Press click listener
+                view.setOnClickListener { _ ->
+                    handleAlphabetClick(def, view)
                 }
             }
-            else -> {}
         }
-        super.onAction(action, source)
     }
 
-    private fun findAlphabetKeyViewId(text: String): Int {
-        return Layout.flatten()
-            .filterIsInstance<NineKeyAlphabetKey>()
-            .firstOrNull { keyDef ->
-                keyDef.letters.contains(text)
-            }?.let { keyDef ->
-                findViewById<KeyView>(keyDef.viewIdRes)?.id ?: -1
-            } ?: -1
+    /**
+     * Handle tap on an alphabet key (ABC, DEF, etc.):
+     * - Same key tapped again → cycle to next letter
+     * - Different key → start new pending
+     * - Always shows popup with ✓ on selected letter
+     * - Resets 500ms auto-commit timer
+     */
+    private fun handleAlphabetClick(def: NineKeyAlphabetKey, view: View) {
+        val viewId = view.id
+
+        if (activeViewId == viewId) {
+            // Same key → cycle letter
+            selectedLetterIndex = (selectedLetterIndex + 1) % def.letters.length
+        } else {
+            // New key → reset state
+            activeKeyDef = def
+            activeViewId = viewId
+            selectedLetterIndex = 0
+        }
+
+        showLetterPopup(def, view, selectedLetterIndex)
+
+        // Reset the 500ms auto-commit timer
+        handler.removeCallbacks(autoCommitRunnable)
+        handler.postDelayed(autoCommitRunnable, AUTO_COMMIT_DELAY)
     }
 
-    private fun commitCurrentLetter() {
-        val state = multiPressState.values.firstOrNull() ?: return
-        // Commit the selected letter through the normal action flow
-        keyActionListener?.onKeyAction(
-            KeyAction.CommitAction(state.currentLetter),
-            KeyActionListener.Source.Keyboard
-        )
-        multiPressState.clear()
-    }
-
-    // ── Popup ─────────────────────────────────────────────────────────────
-
-    private fun showLetterPopup(view: KeyView, viewId: Int, letters: String, selectedIdx: Int) {
+    /**
+     * Show popup menu with all letters of this key, ✓ on [selectedIdx].
+     */
+    private fun showLetterPopup(def: NineKeyAlphabetKey, view: View, selectedIdx: Int) {
+        val letters = def.letters
         val items = letters.mapIndexed { idx, ch ->
-            val marker = if (idx == selectedIdx) " ✓" else ""
+            val marker = if (idx == selectedIdx) " ✓" else "  "
             KeyDef.Popup.Menu.Item(
-                "$ch$marker",
-                0,
-                KeyAction.CommitAction(ch.toString())
+                label = ch.toString() + marker,
+                icon = 0,
+                action = KeyAction.CommitAction(ch.toString())
             )
         }.toTypedArray()
 
         onPopupAction(
             PopupAction.ShowMenuAction(
-                viewId,
+                view.id,
                 KeyDef.Popup.Menu(items),
-                view.bounds
+                (view as KeyView).bounds
             )
         )
     }
 
-    // ── Popup handling ─────────────────────────────────────────────────────
+    /**
+     * Commit the currently selected letter via the key action listener.
+     * Called either by:
+     *   (a) user tapping a letter in the popup → onPopupAction handles
+     *   (b) 500ms auto-commit timer firing
+     */
+    private fun commitCurrentLetter() {
+        val def = activeKeyDef ?: return
+        val letter = def.letters.getOrNull(selectedLetterIndex) ?: return
+        // Route through super.onAction so it reaches keyActionListener
+        super.onAction(KeyAction.CommitAction(letter.toString()), KeyActionListener.Source.Keyboard)
+        resetState()
+    }
+
+    // ── Popup action handling ──────────────────────────────────────────────
     //
-    // When the user taps the popup menu to select a letter, TriggerAction fires.
-    // We intercept it to commit that specific letter and reset state.
+    // When user taps a letter in the popup menu, PopupComponent fires TriggerAction.
+    // We intercept it, cancel auto-commit, get the selected letter from the popup,
+    // and commit it.
 
     override fun onPopupAction(action: PopupAction) {
         when (action) {
             is PopupAction.TriggerAction -> {
-                // Find the selected letter from popup and commit it
-                val triggerAction = action as? PopupAction.TriggerAction
-                // The TriggerAction carries the viewId; look up the popup menu
-                // For now, commit whatever is selected in multi-press state
-                multiPressState.values.firstOrNull()?.let { state ->
-                    keyActionListener?.onKeyAction(
-                        KeyAction.CommitAction(state.currentLetter),
-                        KeyActionListener.Source.Popup
-                    )
+                // Cancel pending 500ms auto-commit
+                handler.removeCallbacks(autoCommitRunnable)
+
+                // Let PopupComponent resolve the focused item → outAction gets set
+                super.onPopupAction(action)
+                val selectedAction = action.outAction
+
+                // Commit the selected letter
+                if (selectedAction is KeyAction.CommitAction) {
+                    super.onAction(selectedAction, KeyActionListener.Source.Popup)
                 }
-                multiPressState.clear()
-                handler.removeCallbacks(commitRunnable)
+
+                resetState()
+            }
+            is PopupAction.DismissAction -> {
+                // User dismissed popup without selecting → keep pending,
+                // auto-commit will fire in ~500ms from first tap
                 super.onPopupAction(action)
             }
             else -> super.onPopupAction(action)
