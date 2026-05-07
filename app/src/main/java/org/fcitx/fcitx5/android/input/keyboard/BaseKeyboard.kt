@@ -142,7 +142,14 @@ abstract class BaseKeyboard(
             })
         }
         spaceSwipeMoveCursor.registerOnChangeListener(spaceSwipeChangeListener)
+        postInit()
     }
+
+    /**
+     * Called after all key views have been created and laid out.
+     * Subclasses may override this to perform additional initialization.
+     */
+    protected open fun postInit() {}
 
     private fun createKeyView(def: KeyDef): KeyView {
         return when (def.appearance) {

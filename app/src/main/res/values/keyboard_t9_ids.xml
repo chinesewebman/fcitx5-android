@@ -3,6 +3,14 @@
     <item name="button_mini_space" type="id"/>
     <!-- NineKey (T9) keyboard view IDs -->
     <item name="button_ninekey_alpha" type="id"/>
+    <item name="button_ninekey_alpha_2" type="id"/>
+    <item name="button_ninekey_alpha_3" type="id"/>
+    <item name="button_ninekey_alpha_4" type="id"/>
+    <item name="button_ninekey_alpha_5" type="id"/>
+    <item name="button_ninekey_alpha_6" type="id"/>
+    <item name="button_ninekey_alpha_7" type="id"/>
+    <item name="button_ninekey_alpha_8" type="id"/>
+    <item name="button_ninekey_alpha_9" type="id"/>
     <item name="button_ninekey_punct" type="id"/>
     <item name="button_ninekey_space" type="id"/>
     <item name="button_ninekey_switch" type="id"/>

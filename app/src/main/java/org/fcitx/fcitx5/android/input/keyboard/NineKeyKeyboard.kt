@@ -51,20 +51,20 @@ class NineKeyKeyboard(
             // Row 1
             listOf(
                 NineKeyPunctKey(".", ","),
-                NineKeyAlphabetKey("A", "2", "ABC"),
-                NineKeyAlphabetKey("D", "3", "DEF")
+                NineKeyAlphabetKey("A", "2", "ABC", R.id.button_ninekey_alpha_2),
+                NineKeyAlphabetKey("D", "3", "DEF", R.id.button_ninekey_alpha_3)
             ),
             // Row 2
             listOf(
-                NineKeyAlphabetKey("G", "4", "GHI"),
-                NineKeyAlphabetKey("J", "5", "JKL"),
-                NineKeyAlphabetKey("M", "6", "MNO")
+                NineKeyAlphabetKey("G", "4", "GHI", R.id.button_ninekey_alpha_4),
+                NineKeyAlphabetKey("J", "5", "JKL", R.id.button_ninekey_alpha_5),
+                NineKeyAlphabetKey("M", "6", "MNO", R.id.button_ninekey_alpha_6)
             ),
             // Row 3
             listOf(
-                NineKeyAlphabetKey("P", "7", "PQRS"),
-                NineKeyAlphabetKey("T", "8", "TUV"),
-                NineKeyAlphabetKey("W", "9", "WXYZ")
+                NineKeyAlphabetKey("P", "7", "PQRS", R.id.button_ninekey_alpha_7),
+                NineKeyAlphabetKey("T", "8", "TUV", R.id.button_ninekey_alpha_8),
+                NineKeyAlphabetKey("W", "9", "WXYZ", R.id.button_ninekey_alpha_9)
             ),
             // Row 4
             listOf(
@@ -93,10 +93,13 @@ class NineKeyKeyboard(
 
     val space: TextKeyView by lazy { findViewById(R.id.button_ninekey_space) }
 
+    // All alphabet key views that need multi-press wiring
+    private lateinit var alphaKeys: List<Pair<NineKeyAlphabetKey, KeyView>>
+
     private val showLangSwitchKey = AppPrefs.getInstance().keyboard.showLangSwitchKey
 
     @Keep
-    private val showLangSwitchKeyListener = ManagedPreference.OnChangeListener<Boolean> { _, v ->
+    private val showLangSwitchKeyListener = ManagedPreference.OnChangeListener<Boolean> { _, _ ->
         // NineKey doesn't have a lang key in the default layout
     }
 
@@ -109,7 +112,6 @@ class NineKeyKeyboard(
     override fun onAttach() {
         multiPressState.clear()
         handler.removeCallbacks(commitRunnable)
-        wireMultiPressKeys()
     }
 
     override fun onDetach() {
@@ -117,25 +119,19 @@ class NineKeyKeyboard(
         handler.removeCallbacks(commitRunnable)
     }
 
-    // ── Multi-press wiring ─────────────────────────────────────────────────
-    //
-    // BaseKeyboard creates the key views with default single-press behaviour.
-    // We post after construction to replace those handlers with our own
-    // multi-press logic.
+    // ── Multi-press wiring (called after key views are created) ─────────────
 
-    private fun wireMultiPressKeys() {
-        post {
-            allViews.forEach { v ->
-                if (v !is KeyView) return@forEach
-                val def = v.def
-                if (def is NineKeyAlphabetKey) {
-                    // Remove base-class single-press (it fires FcitxKeyAction)
-                    // and replace with our multi-press handler.
-                    v.setOnClickListener(null)
-                    v.setOnClickListener { view ->
-                        handleMultiPress(def, view)
-                    }
-                }
+    override fun postInit() {
+        super.postInit()
+        // Collect all NineKeyAlphabetKey views by their unique view IDs
+        alphaKeys = Layout.flatten()
+            .filterIsInstance<NineKeyAlphabetKey>()
+            .map { keyDef -> keyDef to findViewById<KeyView>(keyDef.viewIdRes) }
+
+        // Replace each alphabet key's click handler with multi-press logic
+        alphaKeys.forEach { (keyDef, view) ->
+            view.setOnClickListener {
+                handleMultiPress(keyDef, view)
             }
         }
     }
@@ -207,7 +203,7 @@ class NineKeyKeyboard(
 
     override fun onAction(
         action: KeyAction,
-        source: KeyActionListener.Source = KeyActionListener.Source.Keyboard
+        source: KeyActionListener.Source
     ) {
         when (action) {
             is KeyAction.CommitAction -> {

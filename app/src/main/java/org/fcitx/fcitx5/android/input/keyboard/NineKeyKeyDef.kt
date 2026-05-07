@@ -5,12 +5,14 @@
 package org.fcitx.fcitx5.android.input.keyboard
 
 import android.graphics.Typeface
+import androidx.annotation.IdRes
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.data.InputFeedbacks
+import org.fcitx.fcitx5.android.input.picker.PickerWindow
 
 /**
  * 9-key alphabet key.
@@ -19,11 +21,13 @@ import org.fcitx.fcitx5.android.data.InputFeedbacks
  * @param primaryLetter  The primary letter shown on the key (e.g. "A" for "ABC")
  * @param digitHint      The digit shown in popup hint (e.g. "2" for ABC)
  * @param letters        All letters on this key, in order (e.g. "ABC")
+ * @param viewIdRes      Unique view ID for this key
  */
 class NineKeyAlphabetKey(
     val primaryLetter: String,
     val digitHint: String,
     val letters: String,
+    @IdRes val viewIdRes: Int = R.id.button_ninekey_alpha,
 ) : KeyDef(
     Appearance.Text(
         displayText = primaryLetter,
@@ -32,7 +36,7 @@ class NineKeyAlphabetKey(
         variant = KeyDef.Appearance.Variant.Normal,
         border = KeyDef.Appearance.Border.Default,
         margin = true,
-        viewId = R.id.button_ninekey_alpha,
+        viewId = viewIdRes,
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
