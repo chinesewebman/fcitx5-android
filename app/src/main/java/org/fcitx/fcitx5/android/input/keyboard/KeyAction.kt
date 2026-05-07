@@ -40,4 +40,7 @@ sealed class KeyAction {
     data class PickerSwitchAction(val key: PickerWindow.Key? = null) : KeyAction()
 
     data object SpaceLongPressAction : KeyAction()
+
+    /** No-operation action: consumed silently, never reaches CommonKeyActionListener. */
+    data object NoOpAction : KeyAction()
 }

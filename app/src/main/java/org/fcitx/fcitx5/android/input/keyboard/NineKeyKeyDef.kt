@@ -45,10 +45,10 @@ class NineKeyAlphabetKey(
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
-        // No-op placeholder — NineKeyKeyboard intercepts via onAction
-        // and manages popup/commit manually. Using DeleteSelectionAction(0)
-        // because it's handled as a no-op in CommonKeyActionListener.
-        KeyDef.Behavior.Press(KeyAction.DeleteSelectionAction(0))
+        // No-op: we intercept in onAction() and handle popup/commit ourselves.
+        // Do NOT use CommitAction here — CommonKeyActionListener.commitAndReset()
+        // resets the keyboard on CommitAction.
+        KeyDef.Behavior.Press(KeyAction.NoOpAction)
     ),
     popup = arrayOf(
         // Long-press shows menu with all letters for user to select
