@@ -8,6 +8,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import androidx.annotation.Keep
 import org.fcitx.fcitx5.android.R
@@ -116,6 +117,7 @@ class NineKeyKeyboard(
         firstLetterToDef = Layout.flatten()
             .filterIsInstance<NineKeyAlphabetKey>()
             .associateBy { it.letters.first() }
+        Log.w("NineKeyKB", "postInit: firstLetterToDef=$firstLetterToDef")
     }
 
     override fun onDetach() {
@@ -156,23 +158,30 @@ class NineKeyKeyboard(
         source: KeyActionListener.Source
     ) {
         if (action is KeyAction.CommitAction) {
+            Log.w("NineKeyKB", "onAction CommitAction '${action.text}' source=$source")
             val letter = action.text.singleOrNull() ?: run {
+                Log.w("NineKeyKB", "  → singleOrNull failed, super.onAction")
                 super.onAction(action, source)
                 return
             }
+            Log.w("NineKeyKB", "  letter='$letter' activeViewId=$activeViewId")
 
             // Find the NineKeyAlphabetKey for this letter
             val def = firstLetterToDef[letter]
+            Log.w("NineKeyKB", "  def=$def")
 
             if (def == null) {
                 // Not a nine-key alphabet letter — normal commit
+                Log.w("NineKeyKB", "  → def null, super.onAction")
                 super.onAction(action, source)
                 return
             }
 
             val view = findKeyView(def.viewIdRes)
+            Log.w("NineKeyKB", "  view=$view viewId=${def.viewIdRes}")
 
             if (view == null) {
+                Log.w("NineKeyKB", "  → view null, super.onAction")
                 super.onAction(action, source)
                 return
             }
@@ -184,6 +193,7 @@ class NineKeyKeyboard(
                     showLetterPopup(def, view, selectedLetterIndex)
                     handler.removeCallbacks(autoCommitRunnable)
                     handler.postDelayed(autoCommitRunnable, AUTO_COMMIT_DELAY)
+                    Log.w("NineKeyKB", "  → HOLD (cycle), idx=$selectedLetterIndex")
                     // HOLD — don't call super
                 }
                 // Different key (or no active key) → start new pending
@@ -198,6 +208,7 @@ class NineKeyKeyboard(
                     showLetterPopup(def, view, selectedLetterIndex)
                     handler.removeCallbacks(autoCommitRunnable)
                     handler.postDelayed(autoCommitRunnable, AUTO_COMMIT_DELAY)
+                    Log.w("NineKeyKB", "  → HOLD (new key), popup shown")
                     // HOLD — don't call super
                 }
             }
