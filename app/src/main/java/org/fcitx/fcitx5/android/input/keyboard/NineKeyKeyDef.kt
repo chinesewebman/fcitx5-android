@@ -16,21 +16,19 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
 
 /**
  * 9-key alphabet key.
- * Shows the first letter of [letters] by default.
- * Multi-press cycles through all [letters].
- * @param primaryLetter  The primary letter shown on the key (e.g. "A" for "ABC")
- * @param digitHint      The digit shown in popup hint (e.g. "2" for ABC)
- * @param letters        All letters on this key, in order (e.g. "ABC")
+ * Shows the full [letters] combo on the key (e.g. "ABC").
+ * Multi-press cycles through all [letters] in the popup, NOT on the key label.
+ * @param letters        Full letter combo shown on the key (e.g. "ABC")
+ * @param digitHint      The digit shown as hint (e.g. "2" for ABC)
  * @param viewIdRes      Unique view ID for this key
  */
 class NineKeyAlphabetKey(
-    val primaryLetter: String,
-    val digitHint: String,
     val letters: String,
+    val digitHint: String,
     @IdRes val viewIdRes: Int = R.id.button_ninekey_alpha,
 ) : KeyDef(
     Appearance.Text(
-        displayText = primaryLetter,
+        displayText = letters,
         textSize = 24f,
         percentWidth = 0f,  // fill remaining space equally
         variant = KeyDef.Appearance.Variant.Normal,
@@ -40,11 +38,10 @@ class NineKeyAlphabetKey(
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
-        KeyDef.Behavior.Press(KeyAction.CommitAction(primaryLetter))
+        KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
     ),
     popup = arrayOf(
-        KeyDef.Popup.AltPreview(primaryLetter, digitHint),
-        KeyDef.Popup.Keyboard(primaryLetter)
+        KeyDef.Popup.AltPreview(letters.first().toString(), digitHint)
     )
 )
 

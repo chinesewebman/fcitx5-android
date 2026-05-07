@@ -51,20 +51,20 @@ class NineKeyKeyboard(
             // Row 1
             listOf(
                 NineKeyPunctKey(".", ","),
-                NineKeyAlphabetKey("A", "2", "ABC", R.id.button_ninekey_alpha_2),
-                NineKeyAlphabetKey("D", "3", "DEF", R.id.button_ninekey_alpha_3)
+                NineKeyAlphabetKey("ABC", "2", R.id.button_ninekey_alpha_2),
+                NineKeyAlphabetKey("DEF", "3", R.id.button_ninekey_alpha_3)
             ),
             // Row 2
             listOf(
-                NineKeyAlphabetKey("G", "4", "GHI", R.id.button_ninekey_alpha_4),
-                NineKeyAlphabetKey("J", "5", "JKL", R.id.button_ninekey_alpha_5),
-                NineKeyAlphabetKey("M", "6", "MNO", R.id.button_ninekey_alpha_6)
+                NineKeyAlphabetKey("GHI", "4", R.id.button_ninekey_alpha_4),
+                NineKeyAlphabetKey("JKL", "5", R.id.button_ninekey_alpha_5),
+                NineKeyAlphabetKey("MNO", "6", R.id.button_ninekey_alpha_6)
             ),
             // Row 3
             listOf(
-                NineKeyAlphabetKey("P", "7", "PQRS", R.id.button_ninekey_alpha_7),
-                NineKeyAlphabetKey("T", "8", "TUV", R.id.button_ninekey_alpha_8),
-                NineKeyAlphabetKey("W", "9", "WXYZ", R.id.button_ninekey_alpha_9)
+                NineKeyAlphabetKey("PQRS", "7", R.id.button_ninekey_alpha_7),
+                NineKeyAlphabetKey("TUV", "8", R.id.button_ninekey_alpha_8),
+                NineKeyAlphabetKey("WXYZ", "9", R.id.button_ninekey_alpha_9)
             ),
             // Row 4
             listOf(
@@ -83,18 +83,15 @@ class NineKeyKeyboard(
     private data class MultiPressState(
         val keyDef: NineKeyAlphabetKey,
         var pressCount: Int = 0,
-        var currentLetter: String = keyDef.primaryLetter
+        var currentLetter: String = keyDef.letters.first().toString()
     )
 
     private val handler = Handler(Looper.getMainLooper())
-    private val commitRunnable = Runnable { commitAndReset() }
+    private val commitRunnable = Runnable { commitCurrentLetter() }
 
     // ── Key view bindings ──────────────────────────────────────────────────
 
     val space: TextKeyView by lazy { findViewById(R.id.button_ninekey_space) }
-
-    // All alphabet key views that need multi-press wiring
-    private lateinit var alphaKeys: List<Pair<NineKeyAlphabetKey, KeyView>>
 
     private val showLangSwitchKey = AppPrefs.getInstance().keyboard.showLangSwitchKey
 
@@ -119,61 +116,75 @@ class NineKeyKeyboard(
         handler.removeCallbacks(commitRunnable)
     }
 
-    // ── Multi-press wiring (called after key views are created) ─────────────
+    // ── Multi-press via onAction interception ───────────────────────────────
+    //
+    // KeyView's built-in click fires a CommitAction(primaryLetter) → onAction().
+    // We intercept it here to manage multi-press cycling, then commit via
+    // keyActionListener when the 500ms timeout fires.
 
-    override fun postInit() {
-        super.postInit()
-        // Collect all NineKeyAlphabetKey views by their unique view IDs
-        alphaKeys = Layout.flatten()
-            .filterIsInstance<NineKeyAlphabetKey>()
-            .map { keyDef -> keyDef to findViewById<KeyView>(keyDef.viewIdRes) }
+    override fun onAction(
+        action: KeyAction,
+        source: KeyActionListener.Source
+    ) {
+        when (action) {
+            is KeyAction.CommitAction -> {
+                // Find which NineKey alphabet key this commit came from
+                val viewId = findAlphabetKeyViewId(action.text)
+                if (viewId != -1) {
+                    // Cancel any pending commit
+                    handler.removeCallbacks(commitRunnable)
 
-        // Replace each alphabet key's click handler with multi-press logic
-        alphaKeys.forEach { (keyDef, view) ->
-            view.setOnClickListener {
-                handleMultiPress(keyDef, view)
+                    // Get or create state for this key
+                    val keyDef = Layout.flatten()
+                        .filterIsInstance<NineKeyAlphabetKey>()
+                        .first { findViewById<KeyView>(it.viewIdRes).id == viewId }
+
+                    val state = multiPressState.getOrPut(viewId) {
+                        MultiPressState(keyDef)
+                    }
+
+                    // Cycle to next letter
+                    state.pressCount++
+                    val idx = (state.pressCount - 1) % keyDef.letters.length
+                    state.currentLetter = keyDef.letters.substring(idx, idx + 1)
+
+                    // Show popup with all letters, ✓ on selected
+                    val view = findViewById<KeyView>(viewId)
+                    showLetterPopup(view, viewId, keyDef.letters, idx)
+
+                    // Schedule auto-commit if no more presses arrive
+                    handler.postDelayed(commitRunnable, MULTI_PRESS_DELAY)
+                    return  // Don't call super — we're holding the commit
+                }
             }
+            else -> {}
         }
+        super.onAction(action, source)
     }
 
-    // ── Multi-press logic ──────────────────────────────────────────────────
-
-    private fun handleMultiPress(keyDef: NineKeyAlphabetKey, view: View) {
-        val viewId = view.id
-
-        // Cancel any pending commit
-        handler.removeCallbacks(commitRunnable)
-
-        // Get or create state for this key
-        val state = multiPressState.getOrPut(viewId) {
-            MultiPressState(keyDef)
-        }
-
-        // Increment cycle position
-        state.pressCount++
-        val letters = keyDef.letters
-        val idx = (state.pressCount - 1) % letters.length
-        state.currentLetter = letters.substring(idx, idx + 1)
-
-        // Update key label to show the selected letter
-        updateKeyLabel(view, state.currentLetter)
-
-        // Show popup with all letter options and a ✓ on the selected one
-        showLetterPopup(view, viewId, letters, idx)
-
-        // Schedule auto-commit if no more presses arrive
-        handler.postDelayed(commitRunnable, MULTI_PRESS_DELAY)
+    private fun findAlphabetKeyViewId(text: String): Int {
+        return Layout.flatten()
+            .filterIsInstance<NineKeyAlphabetKey>()
+            .firstOrNull { keyDef ->
+                keyDef.letters.contains(text)
+            }?.let { keyDef ->
+                findViewById<KeyView>(keyDef.viewIdRes)?.id ?: -1
+            } ?: -1
     }
 
-    private fun updateKeyLabel(view: View, text: String) {
-        when (view) {
-            is TextKeyView -> view.mainText.text = text
-            is AltTextKeyView -> view.mainText.text = text
-            is ImageTextKeyView -> view.mainText.text = text
-        }
+    private fun commitCurrentLetter() {
+        val state = multiPressState.values.firstOrNull() ?: return
+        // Commit the selected letter through the normal action flow
+        keyActionListener?.onKeyAction(
+            KeyAction.CommitAction(state.currentLetter),
+            KeyActionListener.Source.Keyboard
+        )
+        multiPressState.clear()
     }
 
-    private fun showLetterPopup(view: View, viewId: Int, letters: String, selectedIdx: Int) {
+    // ── Popup ─────────────────────────────────────────────────────────────
+
+    private fun showLetterPopup(view: KeyView, viewId: Int, letters: String, selectedIdx: Int) {
         val items = letters.mapIndexed { idx, ch ->
             val marker = if (idx == selectedIdx) " ✓" else ""
             KeyDef.Popup.Menu.Item(
@@ -187,52 +198,29 @@ class NineKeyKeyboard(
             PopupAction.ShowMenuAction(
                 viewId,
                 KeyDef.Popup.Menu(items),
-                (view as KeyView).bounds
+                view.bounds
             )
         )
-    }
-
-    private fun commitAndReset() {
-        // The last selected letter has already been "shown" on the key.
-        // When the user moves to another key, that letter becomes the committed one.
-        // We just reset state here.
-        multiPressState.clear()
-    }
-
-    // ── Action handling ────────────────────────────────────────────────────
-
-    override fun onAction(
-        action: KeyAction,
-        source: KeyActionListener.Source
-    ) {
-        when (action) {
-            is KeyAction.CommitAction -> {
-                // Reset multi-press on any character commit
-                multiPressState.clear()
-                handler.removeCallbacks(commitRunnable)
-            }
-            is KeyAction.LayoutSwitchAction -> {
-                multiPressState.clear()
-                handler.removeCallbacks(commitRunnable)
-            }
-            is KeyAction.LangSwitchAction -> {
-                multiPressState.clear()
-                handler.removeCallbacks(commitRunnable)
-            }
-            else -> {}
-        }
-        super.onAction(action, source)
     }
 
     // ── Popup handling ─────────────────────────────────────────────────────
     //
     // When the user taps the popup menu to select a letter, TriggerAction fires.
-    // We intercept it here to first reset multi-press state.
+    // We intercept it to commit that specific letter and reset state.
 
     override fun onPopupAction(action: PopupAction) {
         when (action) {
             is PopupAction.TriggerAction -> {
-                // Reset multi-press state on popup selection
+                // Find the selected letter from popup and commit it
+                val triggerAction = action as? PopupAction.TriggerAction
+                // The TriggerAction carries the viewId; look up the popup menu
+                // For now, commit whatever is selected in multi-press state
+                multiPressState.values.firstOrNull()?.let { state ->
+                    keyActionListener?.onKeyAction(
+                        KeyAction.CommitAction(state.currentLetter),
+                        KeyActionListener.Source.Popup
+                    )
+                }
                 multiPressState.clear()
                 handler.removeCallbacks(commitRunnable)
                 super.onPopupAction(action)
