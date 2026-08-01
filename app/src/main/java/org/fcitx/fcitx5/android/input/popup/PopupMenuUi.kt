@@ -21,8 +21,8 @@ import splitties.views.dsl.core.frameLayout
 import splitties.views.dsl.core.horizontalLayout
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.lParams
+import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.textView
-import splitties.views.dsl.core.wrapContent
 import splitties.views.gravityHorizontalCenter
 import splitties.views.gravityVerticalCenter
 import splitties.views.imageDrawable
@@ -71,32 +71,24 @@ class PopupMenuUi(
     private val keyViews = items.mapIndexed { idx, item ->
         frameLayout {
             background = inactiveBackground
-            // Render both the icon (decorative, kept from the old icon-only design) and
-            // the label (e.g. "A", "B", "C" for NineKey alphabet popup). The label was
-            // previously ignored entirely by this container — see pitfall P-15.
+            // Render the label directly. The previous design stacked an icon drawable on
+            // top of a textView in the same cell, which on ColorOS (OnePlus) caused the
+            // icon to dominate visually and the label was effectively invisible because
+            // both layered at frameLayout CENTER with identical bounds. Drop the icon
+            // entirely — the popup's purpose is to surface the label (the available
+            // character / phrase), and the icon was decorative noise.
             isClickable = true
             isFocusable = true
             setOnClickListener { onItemClick(idx) }
-            add(imageView {
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                imageDrawable = drawable(item.icon)!!.apply {
-                    setTint(theme.accentKeyTextColor)
-                }
-            }, lParams(keySize, keySize) {
-                gravity = Gravity.CENTER
-            })
-            // The label is the popup item's display text. For nine-key alphabet items
-            // this is a single character (e.g. "A"); for CommaKey/ReturnKey items
-            // (e.g. "Emoji", "QuickPhrase", "Unicode") it's a short word. Render the
-            // full label in a single line, ellipsizing if the cell is too narrow.
             add(textView {
                 text = item.label
-                setTextColor(theme.accentKeyTextColor)
-                textSize = 14f
+                setTextColor(theme.keyTextColor)
+                textSize = 22f
+                includeFontPadding = false
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 gravity = Gravity.CENTER
-            }, lParams(wrapContent, wrapContent) {
+            }, lParams(matchParent, matchParent) {
                 gravity = Gravity.CENTER
             })
         }
