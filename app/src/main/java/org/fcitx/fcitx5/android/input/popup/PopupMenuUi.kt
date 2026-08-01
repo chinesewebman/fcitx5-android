@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.OvalShape
+import android.view.Gravity
 import android.widget.ImageView
 import androidx.core.graphics.ColorUtils
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -16,9 +17,14 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyDef
 import splitties.dimensions.dp
 import splitties.resources.drawable
 import splitties.views.dsl.core.add
+import splitties.views.dsl.core.frameLayout
 import splitties.views.dsl.core.horizontalLayout
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.lParams
+import splitties.views.dsl.core.textView
+import splitties.views.dsl.core.wrapContent
+import splitties.views.gravityHorizontalCenter
+import splitties.views.gravityVerticalCenter
 import splitties.views.imageDrawable
 import kotlin.math.floor
 
@@ -28,6 +34,7 @@ class PopupMenuUi(
     outerBounds: Rect,
     triggerBounds: Rect,
     onDismissSelf: PopupContainerUi.() -> Unit = {},
+    private val onItemClick: (Int) -> Unit,
     private val items: Array<KeyDef.Popup.Menu.Item>
 ) : PopupContainerUi(ctx, theme, outerBounds, triggerBounds, onDismissSelf) {
 
@@ -61,13 +68,37 @@ class PopupMenuUi(
 
     private var focusedIndex = columnOrder[focusColumn]
 
-    private val keyViews = items.map {
-        imageView {
+    private val keyViews = items.mapIndexed { idx, item ->
+        frameLayout {
             background = inactiveBackground
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            imageDrawable = drawable(it.icon)!!.apply {
-                setTint(theme.accentKeyTextColor)
-            }
+            // Render both the icon (decorative, kept from the old icon-only design) and
+            // the label (e.g. "A", "B", "C" for NineKey alphabet popup). The label was
+            // previously ignored entirely by this container — see pitfall P-15.
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onItemClick(idx) }
+            add(imageView {
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                imageDrawable = drawable(item.icon)!!.apply {
+                    setTint(theme.accentKeyTextColor)
+                }
+            }, lParams(keySize, keySize) {
+                gravity = Gravity.CENTER
+            })
+            // The label is the popup item's display text. For nine-key alphabet items
+            // this is a single character (e.g. "A"); for CommaKey/ReturnKey items
+            // (e.g. "Emoji", "QuickPhrase", "Unicode") it's a short word. Render the
+            // full label in a single line, ellipsizing if the cell is too narrow.
+            add(textView {
+                text = item.label
+                setTextColor(theme.accentKeyTextColor)
+                textSize = 14f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER
+            }, lParams(wrapContent, wrapContent) {
+                gravity = Gravity.CENTER
+            })
         }
     }
 

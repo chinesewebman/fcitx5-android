@@ -46,12 +46,15 @@ class NineKeyAlphabetKey(
         KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
     ),
     popup = arrayOf(
-        // Long-press: show popup with all letters
+        // Long-press: show popup with all letters. Label is the single letter; the
+        // popup container renders it directly (see PopupMenuUi.keyViews). The previous
+        // "A ✓" label was decorative — PopupMenuUi used to ignore label entirely, but
+        // now the first character is what gets drawn.
         KeyDef.Popup.Menu(
-            items = letters.mapIndexed { idx, ch ->
+            items = letters.map { ch ->
                 KeyDef.Popup.Menu.Item(
-                    label = "$ch${if (idx == 0) " ✓" else ""}",
-                    icon = 0,
+                    label = ch.toString(),
+                    icon = R.drawable.ic_baseline_keyboard_24,
                     action = KeyAction.CommitAction(ch.toString())
                 )
             }.toTypedArray()

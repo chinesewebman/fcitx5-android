@@ -50,4 +50,16 @@ sealed class PopupAction {
         override val viewId: Int,
         var outAction: KeyAction? = null
     ) : PopupAction()
+
+    /**
+     * Item tap on a popup container (e.g. tapping a specific letter cell in PopupMenuUi).
+     * Unlike [TriggerAction] which uses the focused/swiped index, this carries the index
+     * the user actually tapped. Routed to [PopupComponent] via the same listener; consumers
+     * read [outAction] the same way they do for [TriggerAction].
+     */
+    data class ItemTriggerAction(
+        override val viewId: Int,
+        val index: Int,
+        var outAction: KeyAction? = null
+    ) : PopupAction()
 }

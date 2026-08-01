@@ -155,12 +155,18 @@ class PopupComponent :
             rootBounds,
             bounds,
             { dismissPopup(viewId) },
+            { idx -> triggerItem(viewId, idx) },
             menu.items,
         )
         showPopupContainer(viewId, menuUi)
     }
 
     private fun showPopupContainer(viewId: Int, ui: PopupContainerUi) {
+        // Popup containers are globally exclusive. Replacing only the map entry leaks the
+        // previous root view (same key cycling), while keeping other IDs leaves stale
+        // popups visible when the user presses a different key.
+        showingContainerUi.values.forEach { root.removeView(it.root) }
+        showingContainerUi.clear()
         root.apply {
             add(ui.root, lParams {
                 leftMargin = ui.triggerBounds.left + ui.offsetX - rootBounds.left
@@ -176,6 +182,16 @@ class PopupComponent :
 
     private fun triggerFocused(viewId: Int): KeyAction? {
         return showingContainerUi[viewId]?.onTrigger()
+    }
+
+    private fun triggerItem(viewId: Int, index: Int): KeyAction? {
+        // Just resolve the KeyAction. The keyboard's `onPopupItemTrigger` will be
+        // invoked by the canonical listener chain below (`onPopupAction` →
+        // `popupActionListener?.onPopupAction(ItemTriggerAction)` →
+        // `BaseKeyboard.onPopupItemTrigger`), which itself reads `outAction`
+        // and calls `onAction(Source.Popup) + DismissAction`. Routing the owner
+        // here too would create a feedback loop.
+        return showingContainerUi[viewId]?.onItemClick(index)
     }
 
     private fun dismissPopup(viewId: Int) {
@@ -236,6 +252,7 @@ class PopupComponent :
                 is PopupAction.ShowKeyboardAction -> showKeyboard(viewId, keyboard, bounds)
                 is PopupAction.ShowMenuAction -> showMenu(viewId, menu, bounds)
                 is PopupAction.TriggerAction -> outAction = triggerFocused(viewId)
+                is PopupAction.ItemTriggerAction -> outAction = triggerItem(viewId, index)
             }
         }
     }

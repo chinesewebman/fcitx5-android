@@ -8,7 +8,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+
 import android.view.View
 import androidx.annotation.Keep
 import org.fcitx.fcitx5.android.R
@@ -96,9 +96,18 @@ class NineKeyKeyboard(
     /** Lookup: first letter → NineKeyAlphabetKey (built in postInit) */
     private lateinit var firstLetterToDef: Map<Char, NineKeyAlphabetKey>
 
+    /** Lookup: view.id (runtime) → NineKeyAlphabetKey (built in postInit). */
+    private lateinit var viewIdToKeyDef: Map<Int, NineKeyAlphabetKey>
+
+    /** View IDs of keys on this keyboard that can show a popup menu. Used by
+     *  [KeyboardWindow] to register a popup owner with [PopupComponent] so item
+     *  clicks route back to this keyboard via [BaseKeyboard.onPopupItemTrigger]. */
+    override val popupOwningViewIds: Collection<Int>
+        get() = if (::viewIdToKeyDef.isInitialized) viewIdToKeyDef.keys else emptyList()
+
     private val handler = Handler(Looper.getMainLooper())
     private val autoCommitRunnable = Runnable {
-        commitCurrentLetter()
+        commitPending()
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -117,7 +126,12 @@ class NineKeyKeyboard(
         firstLetterToDef = Layout.flatten()
             .filterIsInstance<NineKeyAlphabetKey>()
             .associateBy { it.letters.first() }
-        Log.w("NineKeyKB", "postInit: firstLetterToDef=$firstLetterToDef")
+        // Build the viewId → def lookup (uses @IdRes viewIdRes; matches view.id
+        // at runtime only because KeyView.id is bound to that resource id).
+        viewIdToKeyDef = Layout.flatten()
+            .filterIsInstance<NineKeyAlphabetKey>()
+            .associateBy { it.viewIdRes }
+
     }
 
     override fun onDetach() {
@@ -158,76 +172,64 @@ class NineKeyKeyboard(
         source: KeyActionListener.Source
     ) {
         if (action is KeyAction.CommitAction) {
-            Log.w("NineKeyKB", "onAction CommitAction '${action.text}' source=$source")
             val letter = action.text.singleOrNull() ?: run {
-                Log.w("NineKeyKB", "  → singleOrNull failed, super.onAction")
                 super.onAction(action, source)
                 return
             }
-            Log.w("NineKeyKB", "  letter='$letter' activeViewId=$activeViewId")
-
             // Find the NineKeyAlphabetKey for this letter
             val def = firstLetterToDef[letter]
-            Log.w("NineKeyKB", "  def=$def")
 
             if (def == null) {
-                // Not a nine-key alphabet letter — normal commit
-                Log.w("NineKeyKB", "  → def null, super.onAction")
                 super.onAction(action, source)
                 return
             }
 
             val view = findKeyView(def.viewIdRes)
-            Log.w("NineKeyKB", "  view=$view viewId=${def.viewIdRes}")
-
             if (view == null) {
-                Log.w("NineKeyKB", "  → view null, super.onAction")
                 super.onAction(action, source)
                 return
             }
 
             when {
-                // Same key tapped again → cycle letter
-                activeViewId == def.viewIdRes -> {
+                activeViewId == view.id -> {
+                    // Same key tapped again → cycle letter
                     selectedLetterIndex = (selectedLetterIndex + 1) % def.letters.length
                     showLetterPopup(def, view, selectedLetterIndex)
                     handler.removeCallbacks(autoCommitRunnable)
                     handler.postDelayed(autoCommitRunnable, AUTO_COMMIT_DELAY)
-                    Log.w("NineKeyKB", "  → HOLD (cycle), idx=$selectedLetterIndex")
-                    // HOLD — don't call super
+
                 }
-                // Different key (or no active key) → start new pending
                 else -> {
-                    // If there was a previous active key, commit it first
-                    if (activeKeyDef != null) {
-                        commitCurrentLetter()
-                    }
+                    // Different key (or no active key) → start new pending
+                    // Commit previous letter first, then update state to new key.
+                    commitPending()
                     activeKeyDef = def
-                    activeViewId = def.viewIdRes
+                    activeViewId = view.id
                     selectedLetterIndex = 0
                     showLetterPopup(def, view, selectedLetterIndex)
                     handler.removeCallbacks(autoCommitRunnable)
                     handler.postDelayed(autoCommitRunnable, AUTO_COMMIT_DELAY)
-                    Log.w("NineKeyKB", "  → HOLD (new key), popup shown")
-                    // HOLD — don't call super
+
                 }
             }
         } else {
-            // All other actions fall through normally
             super.onAction(action, source)
         }
     }
 
     /**
-     * Show popup menu with all letters of this key, ✓ on [selectedIdx].
+     * Show popup menu with all letters of this key. The currently selected letter
+     * is highlighted via the popup's own focus/background mechanism, not via a
+     * label marker — see [PopupMenuUi.markFocus]. Caller is responsible for
+     * `activeViewId = view.id` and dismissing any prior popup; this only emits
+     * the ShowMenuAction.
      */
     private fun showLetterPopup(def: NineKeyAlphabetKey, view: KeyView, selectedIdx: Int) {
         val letters = def.letters
         val items = letters.mapIndexed { idx, ch ->
-            val marker = if (idx == selectedIdx) " ✓" else ""
             KeyDef.Popup.Menu.Item(
-                label = "$ch$marker",
-                icon = 0,
+                label = ch.toString(),
+                icon = R.drawable.ic_baseline_keyboard_24,
                 action = KeyAction.CommitAction(ch.toString())
             )
         }.toTypedArray()
@@ -245,9 +247,20 @@ class NineKeyKeyboard(
      * Commit the currently selected letter via keyActionListener.
      * Goes through CommonKeyActionListener (async, won't close keyboard immediately).
      */
-    private fun commitCurrentLetter() {
+    /**
+     * Commit the currently pending letter (if any), dismiss its popup, and reset state.
+     * Used by the auto-commit timer and by the else-branch in [onAction] when the user
+     * presses a different key. Goes through CommonKeyActionListener (async, won't close
+     * the keyboard immediately).
+     */
+    private fun commitPending() {
         val def = activeKeyDef ?: return
         val letter = def.letters.getOrNull(selectedLetterIndex) ?: return
+        val viewId = activeViewId
+
+        if (viewId != -1) {
+            onPopupAction(PopupAction.DismissAction(viewId))
+        }
         resetState()
         keyActionListener?.onKeyAction(
             KeyAction.CommitAction(letter.toString()),
@@ -264,16 +277,19 @@ class NineKeyKeyboard(
     // 4. CommonKeyActionListener also calls onPopupAction(TriggerAction) → NineKeyKeyboard.onPopupAction
     //
     // We intercept TriggerAction here to reset our state when popup is used.
-
+    //
     override fun onPopupAction(action: PopupAction) {
+
         when (action) {
-            is PopupAction.TriggerAction -> {
-                // Cancel pending auto-commit
+            is PopupAction.TriggerAction,
+            is PopupAction.ItemTriggerAction -> {
+                // User committed via popup (swipe → Trigger, or item tap → ItemTrigger).
+                // Cancel the auto-commit timer and reset our state — the action itself
+                // is forwarded to the popupActionListener so the canonical commit path
+                // (super → BaseKeyboard.onPopupTrigger/onPopupItemTrigger → onAction(Source.Popup))
+                // can run normally.
                 handler.removeCallbacks(autoCommitRunnable)
-                // Let super (PopupComponent) handle TriggerAction → it returns CommitAction
-                // Then CommonKeyActionListener will commit it
                 super.onPopupAction(action)
-                // Reset our state — CommonKeyActionListener handles the actual commit
                 resetState()
             }
             is PopupAction.ShowMenuAction -> {

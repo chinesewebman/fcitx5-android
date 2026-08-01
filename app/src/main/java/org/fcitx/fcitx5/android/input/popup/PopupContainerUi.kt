@@ -88,6 +88,17 @@ abstract class PopupContainerUi(
 
     abstract fun onTrigger(): KeyAction?
 
+    /**
+     * Handle a tap on item at [index]. Distinct from [onTrigger] which is driven by
+     * swipe/focus and uses the container's focused index. Tap-driven consumers (e.g.
+     * PopupMenuUi) override this to route through [PopupAction.ItemTriggerAction] so
+     * the canonical `popupActionListener.onPopupAction(...) → outAction → onAction(Source.Popup)`
+     * path is reused. Default behavior: fall through to [onTrigger] for containers that
+     * don't care about the distinction (e.g. PopupKeyboardUi which treats the focused
+     * key the same as the tapped one).
+     */
+    open fun onItemClick(index: Int): KeyAction? = onTrigger()
+
     companion object {
         fun limitIndex(i: Int, limit: Int) = if (i < 0) 0 else if (i >= limit) limit - 1 else i
     }
