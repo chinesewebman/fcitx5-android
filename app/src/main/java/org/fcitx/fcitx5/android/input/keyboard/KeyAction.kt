@@ -41,6 +41,12 @@ sealed class KeyAction {
 
     data object SpaceLongPressAction : KeyAction()
 
+    /**
+     * Discard the current input context state — preedit and candidates — without
+     * touching committed text. Used by the 9-key "重输" (re-input) key.
+     */
+    data object ResetInputAction : KeyAction()
+
     /** No-operation action: consumed silently, never reaches CommonKeyActionListener. */
     data object NoOpAction : KeyAction()
 }

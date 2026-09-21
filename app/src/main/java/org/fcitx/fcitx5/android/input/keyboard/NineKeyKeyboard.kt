@@ -48,41 +48,66 @@ class NineKeyKeyboard(
         /** Idle time (ms) before the pending letter is committed */
         private const val AUTO_COMMIT_DELAY = 500L
 
+        /** Letter keys fill 3 of the 4 columns a spanned row has left. */
+        private const val ALPHA_WIDTH = 0.27f
+
+        /** The right-hand function column, narrower than a letter key. */
+        private const val LAST_COLUMN_WIDTH = 0.19f
+
         /**
-         * 9-key layout:
-         * Row 1:  1 ·,   2 ABC,  3 DEF
-         * Row 2:  4 GHI, 5 JKL,  6 MNO
-         * Row 3:  7 PQRS,8 TUV,  9 WXYZ
-         * Row 4:  *符,   0空格,  ⌫退格, ↵回车, #ABC
+         * Width of each bottom-row key. Also used by the spanning punctuation key so its
+         * right edge lines up with 符 below it. The space bar takes the remainder.
+         */
+        private const val BOTTOM_KEY_WIDTH = 0.1625f
+
+        /**
+         * Sogou-style 9-key layout.
+         *
+         * ```
+         *   ，。？！   1    2ABC   3DEF   ⌫
+         *   (spans)   4GHI  5JKL   6MNO   重输
+         *   3 rows    7PQRS 8TUV   9WXYZ  0
+         *   符        123   空格          中/英  ↵
+         * ```
+         *
+         * The punctuation key down the left edge spans the three letter rows
+         * ([KeyDef.rowSpan]); the letter rows then start to its right. Widths are
+         * fractions of their row, except the spanning key and the bottom row, which are
+         * fractions of the whole keyboard. `0f` lets the space bar absorb the slack.
          */
         val Layout: List<List<KeyDef>> = listOf(
             // Row 1
             listOf(
-                NineKeyPunctKey(".", ","),
-                NineKeyAlphabetKey("ABC", R.id.button_ninekey_alpha_2),
-                NineKeyAlphabetKey("DEF", R.id.button_ninekey_alpha_3)
+                NineKeyPunctuationKey(percentWidth = BOTTOM_KEY_WIDTH),
+                NineKeyDigitKey("1", R.id.button_ninekey_digit_1, ALPHA_WIDTH),
+                NineKeyAlphabetKey("ABC", "2", R.id.button_ninekey_alpha_2, ALPHA_WIDTH),
+                NineKeyAlphabetKey("DEF", "3", R.id.button_ninekey_alpha_3, ALPHA_WIDTH),
+                NineKeyBackspaceKey(LAST_COLUMN_WIDTH)
             ),
             // Row 2
             listOf(
-                NineKeyAlphabetKey("GHI", R.id.button_ninekey_alpha_4),
-                NineKeyAlphabetKey("JKL", R.id.button_ninekey_alpha_5),
-                NineKeyAlphabetKey("MNO", R.id.button_ninekey_alpha_6)
+                NineKeyAlphabetKey("GHI", "4", R.id.button_ninekey_alpha_4, ALPHA_WIDTH),
+                NineKeyAlphabetKey("JKL", "5", R.id.button_ninekey_alpha_5, ALPHA_WIDTH),
+                NineKeyAlphabetKey("MNO", "6", R.id.button_ninekey_alpha_6, ALPHA_WIDTH),
+                NineKeyReinputKey(LAST_COLUMN_WIDTH)
             ),
             // Row 3
             listOf(
-                NineKeyAlphabetKey("PQRS", R.id.button_ninekey_alpha_7),
-                NineKeyAlphabetKey("TUV", R.id.button_ninekey_alpha_8),
-                NineKeyAlphabetKey("WXYZ", R.id.button_ninekey_alpha_9)
+                NineKeyAlphabetKey("PQRS", "7", R.id.button_ninekey_alpha_7, ALPHA_WIDTH),
+                NineKeyAlphabetKey("TUV", "8", R.id.button_ninekey_alpha_8, ALPHA_WIDTH),
+                NineKeyAlphabetKey("WXYZ", "9", R.id.button_ninekey_alpha_9, ALPHA_WIDTH),
+                NineKeyDigitKey("0", R.id.button_ninekey_digit_0, LAST_COLUMN_WIDTH)
             ),
             // Row 4
             listOf(
-                NineKeySymbolKey("符", PickerWindow.Key.Symbol.name, 0.15f),
+                NineKeySymbolKey("符", PickerWindow.Key.Symbol.name, BOTTOM_KEY_WIDTH),
+                NineKeyNumberSwitchKey(BOTTOM_KEY_WIDTH),
                 NineKeySpaceKey(),
-                NineKeyBackspaceKey(0.18f),
-                NineKeyReturnKey(0.18f),
-                NineKeyLayoutSwitchKey("ABC", TextKeyboard.Name, 0.18f)
+                NineKeyLangSwitchKey(BOTTOM_KEY_WIDTH),
+                NineKeyReturnKey(BOTTOM_KEY_WIDTH)
             )
         )
+
     }
 
     // ── Multi-tap state ────────────────────────────────────────────────────
@@ -97,8 +122,8 @@ class NineKeyKeyboard(
     /** Lookup: first letter → key def, built in [postInit] */
     private lateinit var firstLetterToDef: Map<Char, NineKeyAlphabetKey>
 
-    /** The single punctuation key, resolved in [postInit] */
-    private var punctKeyDef: NineKeyPunctKey? = null
+    /** The single tall punctuation key, resolved in [postInit] */
+    private var punctKeyDef: NineKeyPunctuationKey? = null
 
     /** Localized punctuation mapping (ASCII → e.g. "." → "。"), display only */
     private var punctuationMapping: Map<String, String> = mapOf()
@@ -114,7 +139,7 @@ class NineKeyKeyboard(
         firstLetterToDef = Layout.flatten()
             .filterIsInstance<NineKeyAlphabetKey>()
             .associateBy { it.letters.first() }
-        punctKeyDef = Layout.flatten().filterIsInstance<NineKeyPunctKey>().firstOrNull()
+        punctKeyDef = Layout.flatten().filterIsInstance<NineKeyPunctuationKey>().firstOrNull()
     }
 
     override fun onDetach() {
@@ -133,32 +158,36 @@ class NineKeyKeyboard(
     }
 
     /**
-     * Localize the punctuation key's label to match what fcitx5 will actually commit
-     * ("." → "。" in Chinese), mirroring [TextKeyboard]. Display only: the press action
-     * always sends the raw ASCII character so fcitx5's punctuation addon converts it.
+     * Localize the punctuation key — face and long-press menu — to match what fcitx5
+     * will actually commit ("." → "。" in Chinese), mirroring [TextKeyboard]. Display
+     * only: the press actions always send the ASCII character so fcitx5's punctuation
+     * addon decides whether to convert it.
      */
     override fun onPunctuationUpdate(mapping: Map<String, String>) {
         punctuationMapping = mapping
-        val primary = punctKeyDef?.primary ?: return
+        val symbols = punctKeyDef?.symbols ?: return
         findViewById<TextKeyView>(R.id.button_ninekey_punct)?.mainText?.text =
-            transformPunctuation(primary)
+            symbols.joinToString("\n") { transformPunctuation(it) }
     }
 
     private fun transformPunctuation(p: String) =
         if (p.length == 1) punctuationMapping.getOrDefault(p, p) else p
 
+    private fun localizePunctuationMenu(menu: KeyDef.Popup.Menu) = KeyDef.Popup.Menu(
+        menu.items.map {
+            KeyDef.Popup.Menu.Item(transformPunctuation(it.label), it.icon, it.action)
+        }.toTypedArray()
+    )
+
     override fun onPopupAction(action: PopupAction) {
-        // Localize only the punctuation key's preview bubble; the pending-letter preview
+        // Localize only the punctuation key's own labels; the pending-letter preview
         // must stay verbatim.
-        val localized = when (action) {
+        val localized = if (action.viewId != R.id.button_ninekey_punct) action else when (action) {
             is PopupAction.PreviewAction ->
-                if (action.viewId == R.id.button_ninekey_punct)
-                    action.copy(content = transformPunctuation(action.content))
-                else action
+                action.copy(content = transformPunctuation(action.content))
             is PopupAction.PreviewUpdateAction ->
-                if (action.viewId == R.id.button_ninekey_punct)
-                    action.copy(content = transformPunctuation(action.content))
-                else action
+                action.copy(content = transformPunctuation(action.content))
+            is PopupAction.ShowMenuAction -> action.copy(menu = localizePunctuationMenu(action.menu))
             else -> action
         }
         super.onPopupAction(localized)

@@ -310,7 +310,8 @@ class MiniSpaceKey : KeyDef(
         src = R.drawable.ic_baseline_space_bar_24,
         percentWidth = 0.15f,
         variant = Variant.Alternative,
-        viewId = R.id.button_mini_space
+        viewId = R.id.button_mini_space,
+        soundEffect = InputFeedbacks.SoundEffect.SpaceBar
     ),
     setOf(
         Behavior.Press(KeyAction.SymAction(KeySym(FcitxKeyMapping.FcitxKey_space)))

@@ -11,7 +11,17 @@ import org.fcitx.fcitx5.android.data.InputFeedbacks
 open class KeyDef(
     val appearance: Appearance,
     val behaviors: Set<Behavior>,
-    val popup: Array<Popup>? = null
+    val popup: Array<Popup>? = null,
+    /**
+     * How many consecutive layout rows this key occupies, starting at the row it is
+     * declared in. `1` (the default) means an ordinary key inside its row.
+     *
+     * Values > 1 hoist the key out of its row and pin it to the keyboard itself so it
+     * can span rows — the rows it covers then begin to its right. Only the *leading*
+     * (first) key of a row may span, and it must declare a [Appearance.viewId], because
+     * the spanned rows are constrained against it.
+     */
+    val rowSpan: Int = 1
 ) {
     sealed class Appearance(
         val percentWidth: Float,

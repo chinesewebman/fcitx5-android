@@ -13,6 +13,11 @@
     <item name="button_ninekey_alpha_9" type="id"/>
     <item name="button_ninekey_punct" type="id"/>
     <item name="button_ninekey_space" type="id"/>
-    <item name="button_ninekey_switch" type="id"/>
     <item name="button_ninekey_sym" type="id"/>
+    <!-- Sogou-style additions: right function column + bottom row -->
+    <item name="button_ninekey_reinput" type="id"/>
+    <item name="button_ninekey_digit_0" type="id"/>
+    <item name="button_ninekey_digit_1" type="id"/>
+    <item name="button_ninekey_lang" type="id"/>
+    <item name="button_ninekey_number" type="id"/>
 </resources>

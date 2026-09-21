@@ -29,6 +29,7 @@ import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.above
 import splitties.views.dsl.constraintlayout.below
 import splitties.views.dsl.constraintlayout.bottomOfParent
+import splitties.views.dsl.constraintlayout.bottomToTopOf
 import splitties.views.dsl.constraintlayout.centerHorizontally
 import splitties.views.dsl.constraintlayout.centerVertically
 import splitties.views.dsl.constraintlayout.constraintLayout
@@ -38,6 +39,7 @@ import splitties.views.dsl.constraintlayout.leftToRightOf
 import splitties.views.dsl.constraintlayout.rightOfParent
 import splitties.views.dsl.constraintlayout.rightToLeftOf
 import splitties.views.dsl.constraintlayout.topOfParent
+import splitties.views.dsl.constraintlayout.topToTopOf
 import splitties.views.dsl.core.add
 import timber.log.Timber
 import kotlin.math.absoluteValue
@@ -81,14 +83,36 @@ abstract class BaseKeyboard(
     private val keyRows: List<ConstraintLayout>
 
     /**
+     * The leading key spanning several rows, when the layout declares one. It is a child
+     * of this keyboard rather than of a row, so it needs its own hit-testing path.
+     */
+    private var spanningKeyView: View? = null
+
+    /**
      * HashMap of [PointerId (Int)][MotionEvent.getPointerId] to [KeyView]
      */
     private val touchTarget = hashMapOf<Int, View>()
 
     init {
         isMotionEventSplittingEnabled = true
-        keyRows = keyLayout.map { row ->
-            val keyViews = row.map(::createKeyView)
+
+        // A leading key with `rowSpan > 1` is laid out against the keyboard itself so it
+        // can cover several rows; the rows it covers start to its right. Keyboards with
+        // no spanning key (every one except NineKey) take the plain row-stacking path
+        // below unchanged.
+        val spannedRowStart = keyLayout.indexOfFirst { (it.firstOrNull()?.rowSpan ?: 1) > 1 }
+        val spannedDef = keyLayout.getOrNull(spannedRowStart)?.firstOrNull()
+            ?.takeIf { it.rowSpan > 1 && it.appearance.viewId > 0 }
+        val spannedRowEnd = spannedDef?.let { spannedRowStart + it.rowSpan } ?: -1
+        // Built up front so the spanned rows can be constrained against the view itself.
+        val spannedView = spannedDef?.let(::createKeyView)
+
+        keyRows = keyLayout.mapIndexed { rowIndex, row ->
+            // The spanning key renders as a direct child of the keyboard, so it is
+            // dropped from its row's chain (its column is taken over by the inset that
+            // the spanned rows get below).
+            val keys = if (rowIndex == spannedRowStart) row.drop(1) else row
+            val keyViews = keys.map(::createKeyView)
             constraintLayout Row@{
                 var totalWidth = 0f
                 keyViews.forEachIndexed { index, view ->
@@ -107,10 +131,10 @@ abstract class BaseKeyboard(
                         } else {
                             rightToLeftOf(keyViews[index + 1])
                         }
-                        val def = row[index]
+                        val def = keys[index]
                         matchConstraintPercentWidth = def.appearance.percentWidth
                     })
-                    row[index].appearance.percentWidth.let {
+                    keys[index].appearance.percentWidth.let {
                         // 0f means fill remaining space, thus does not need expanding
                         totalWidth += if (it != 0f) it else 1f
                     }
@@ -121,24 +145,44 @@ abstract class BaseKeyboard(
                         updateLayoutParams<LayoutParams> {
                             matchConstraintPercentWidth += free
                         }
-                        layoutMarginLeft = free / (row.first().appearance.percentWidth + free)
+                        layoutMarginLeft = free / (keys.first().appearance.percentWidth + free)
                     }
                     keyViews.last().apply {
                         updateLayoutParams<LayoutParams> {
                             matchConstraintPercentWidth += free
                         }
-                        layoutMarginRight = free / (row.last().appearance.percentWidth + free)
+                        layoutMarginRight = free / (keys.last().appearance.percentWidth + free)
                     }
                 }
             }
         }
         keyRows.forEachIndexed { index, row ->
+            val spanned = index in spannedRowStart until spannedRowEnd
             add(row, lParams {
                 if (index == 0) topOfParent()
                 else below(keyRows[index - 1])
                 if (index == keyRows.size - 1) bottomOfParent()
                 else above(keyRows[index + 1])
-                centerHorizontally()
+                // Spanned rows begin after the spanning key; all others keep the
+                // original wrap-content centering.
+                if (spanned) {
+                    leftToRightOf(spannedView!!)
+                    rightOfParent()
+                } else {
+                    centerHorizontally()
+                }
+            })
+        }
+        if (spannedDef != null && spannedView != null) {
+            spanningKeyView = spannedView
+            add(spannedView, lParams {
+                leftOfParent()
+                topToTopOf(keyRows[spannedRowStart])
+                // End at the top of the first row that is *not* covered; if the span
+                // reaches the last row, run to the bottom of the keyboard.
+                if (spannedRowEnd < keyRows.size) bottomToTopOf(keyRows[spannedRowEnd])
+                else bottomOfParent()
+                matchConstraintPercentWidth = spannedDef.appearance.percentWidth
             })
         }
         spaceSwipeMoveCursor.registerOnChangeListener(spaceSwipeChangeListener)
@@ -158,13 +202,11 @@ abstract class BaseKeyboard(
             is KeyDef.Appearance.Text -> TextKeyView(context, theme, def.appearance)
             is KeyDef.Appearance.Image -> ImageKeyView(context, theme, def.appearance)
         }.apply {
-            soundEffect = when (def) {
-                is SpaceKey -> InputFeedbacks.SoundEffect.SpaceBar
-                is MiniSpaceKey -> InputFeedbacks.SoundEffect.SpaceBar
-                is BackspaceKey -> InputFeedbacks.SoundEffect.Delete
-                is ReturnKey -> InputFeedbacks.SoundEffect.Return
-                else -> InputFeedbacks.SoundEffect.Standard
-            }
+            // Take the feedback the KeyDef declares. This used to be a type-based `when`
+            // over SpaceKey/MiniSpaceKey/BackspaceKey/ReturnKey, which never matched
+            // custom keys (e.g. the NineKey variants) and silently downgraded them to
+            // Standard — while `Appearance.soundEffect` went entirely unread.
+            soundEffect = def.appearance.soundEffect
             if (def is SpaceKey) {
                 spaceKeys.add(this)
                 swipeEnabled = spaceSwipeMoveCursor.getValue()
@@ -362,10 +404,14 @@ abstract class BaseKeyboard(
 
     private fun findTargetChild(x: Float, y: Float): View? {
         val y0 = y.roundToInt()
-        // assume all rows have equal height
-        val row = keyRows.getOrNull(y0 * keyRows.size / bounds.height()) ?: return null
         val x1 = x.roundToInt() + bounds.left
         val y1 = y0 + bounds.top
+        // A spanning key is not part of any row, so it has to be hit-tested on its own.
+        spanningKeyView?.let {
+            if (it is KeyView && it.bounds.contains(x1, y1)) return it
+        }
+        // assume all rows have equal height
+        val row = keyRows.getOrNull(y0 * keyRows.size / bounds.height()) ?: return null
         return row.children.find {
             if (it !is KeyView) false else it.bounds.contains(x1, y1)
         }

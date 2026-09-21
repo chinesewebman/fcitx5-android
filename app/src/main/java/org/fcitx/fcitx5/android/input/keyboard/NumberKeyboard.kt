@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input.keyboard
 import android.annotation.SuppressLint
 import android.content.Context
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.PopupAction
@@ -58,6 +59,19 @@ class NumberKeyboard(
     val backspace: ImageKeyView by lazy { findViewById(R.id.button_backspace) }
     val space: TextKeyView by lazy { findViewById(R.id.button_mini_space) }
     val `return`: ImageKeyView by lazy { findViewById(R.id.button_return) }
+
+    private val letterLayout: String by AppPrefs.getInstance().internal.lastLetterLayout
+
+    override fun onAction(action: KeyAction, source: KeyActionListener.Source) {
+        // The "ABC" key returns to whichever letter layout the user last used. For a
+        // TextKeyboard user that is unchanged behaviour; for a 9-key user it avoids
+        // being dropped onto the full keyboard after visiting the number pad.
+        val rewritten =
+            if (action is KeyAction.LayoutSwitchAction && action.act == TextKeyboard.Name) {
+                action.copy(act = letterLayout)
+            } else action
+        super.onAction(rewritten, source)
+    }
 
     override fun onReturnDrawableUpdate(returnDrawable: Int) {
         `return`.img.imageResource = returnDrawable

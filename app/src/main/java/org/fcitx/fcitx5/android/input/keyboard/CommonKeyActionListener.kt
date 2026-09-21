@@ -28,6 +28,7 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyAction.LangSwitchAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.MoveSelectionAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.PickerSwitchAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.QuickPhraseAction
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction.ResetInputAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.ShowInputMethodPickerAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.SpaceLongPressAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction.SymAction
@@ -169,6 +170,9 @@ class CommonKeyActionListener :
                     ContextCompat.getMainExecutor(service).execute {
                         windowManager.attachWindow(key)
                     }
+                }
+                is ResetInputAction -> service.postFcitxJob {
+                    reset()
                 }
                 is SpaceLongPressAction -> {
                     when (spaceKeyLongPressBehavior) {
