@@ -8,7 +8,6 @@ import android.graphics.Typeface
 import androidx.annotation.IdRes
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
-import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.data.InputFeedbacks
@@ -16,19 +15,22 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
 
 /**
  * 9-key alphabet key.
- * Shows the full [letters] combo on the key (e.g. "ABC").
  *
- * Uses Behavior.Press(CommitAction) so the normal keyboard flow fires — but we
- * intercept it in NineKeyKeyboard.onAction(CommitAction), return without calling
- * super, and handle the popup + 500ms auto-commit ourselves.
+ * Shows the full [letters] combo on the key (e.g. "ABC"). The letter is chosen by
+ * multi-tap: [NineKeyKeyboard] advances through [letters] on every press and commits
+ * the pending letter to fcitx5 after a short idle. There is deliberately no popup
+ * menu — a menu would swallow the next tap (see `CustomGestureView`'s consumed-gesture
+ * handling) and break cycling.
+ *
+ * [Behavior.Press] carries a [KeyAction.CommitAction] holding the key's first letter as
+ * a press *trigger* only; [NineKeyKeyboard.onAction] intercepts it to identify the key
+ * and never commits that action as-is.
  *
  * @param letters        Full letter combo shown on the key (e.g. "ABC", "DEF")
- * @param digitHint      The digit shown as hint (e.g. "2" for ABC)
  * @param viewIdRes      Unique view ID for this key
  */
 class NineKeyAlphabetKey(
     val letters: String,
-    val digitHint: String,
     @IdRes val viewIdRes: Int = R.id.button_ninekey_alpha,
 ) : KeyDef(
     Appearance.Text(
@@ -42,23 +44,8 @@ class NineKeyAlphabetKey(
         soundEffect = InputFeedbacks.SoundEffect.Standard
     ),
     behaviors = setOf(
-        // First letter — intercepted in NineKeyKeyboard.onAction(CommitAction)
+        // Press trigger only — intercepted in NineKeyKeyboard.onAction(CommitAction).
         KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
-    ),
-    popup = arrayOf(
-        // Long-press: show popup with all letters. Label is the single letter; the
-        // popup container renders it directly (see PopupMenuUi.keyViews). The previous
-        // "A ✓" label was decorative — PopupMenuUi used to ignore label entirely, but
-        // now the first character is what gets drawn.
-        KeyDef.Popup.Menu(
-            items = letters.map { ch ->
-                KeyDef.Popup.Menu.Item(
-                    label = ch.toString(),
-                    icon = R.drawable.ic_baseline_keyboard_24,
-                    action = KeyAction.CommitAction(ch.toString())
-                )
-            }.toTypedArray()
-        )
     )
 )
 
@@ -92,6 +79,11 @@ class NineKeyPunctKey(
 
 /**
  * 9-key space bar — longer than a normal key, shows "空格" label.
+ *
+ * Long press mirrors the full keyboard's space key: it triggers
+ * [KeyAction.SpaceLongPressAction], which the user can map to input method
+ * enumeration / toggle / picker in settings. This is the only way to switch input
+ * method from the 9-key layout, which has no dedicated language key.
  */
 class NineKeySpaceKey : KeyDef(
     Appearance.Text(
@@ -110,7 +102,8 @@ class NineKeySpaceKey : KeyDef(
                 KeySym(FcitxKeyMapping.FcitxKey_space),
                 KeyStates.Virtual
             )
-        )
+        ),
+        KeyDef.Behavior.LongPress(KeyAction.SpaceLongPressAction)
     ),
     popup = null
 )

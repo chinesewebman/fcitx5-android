@@ -72,8 +72,29 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             NineKeyKeyboard.Name to NineKeyKeyboard(context, theme)
         )
     }
+
+    /**
+     * Layouts that are reached by switching to them but must not be remembered as the
+     * `?123` target — `?123` should stay on a symbol/number layout. `Number` is
+     * deliberately not listed: the picker's switch key stores it on purpose.
+     */
+    private val letterKeyboards = setOf(TextKeyboard.Name, NineKeyKeyboard.Name)
+
     private var currentKeyboardName = ""
     private var lastSymbolType: String by AppPrefs.getInstance().internal.lastSymbolLayout
+
+    /**
+     * Letter layout (Text / NineKey) the user last used. [onStartInput] opens text fields
+     * with it, so a 9-key user is not thrown back to the full keyboard on every field.
+     */
+    private var letterLayout: String by AppPrefs.getInstance().internal.lastLetterLayout
+
+    /**
+     * Last punctuation mapping. Replayed on layout switch so a freshly attached layout
+     * shows localized punctuation immediately instead of waiting for the next status
+     * area update (which only reaches whichever layout happens to be current).
+     */
+    private var punctuationMapping: Map<String, String> = mapOf()
 
     private val currentKeyboard: BaseKeyboard? get() = keyboards[currentKeyboardName]
 
@@ -92,7 +113,9 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     // This will be called EXACTLY ONCE
     override fun onCreateView(): View {
         keyboardView = context.frameLayout(R.id.keyboard_view)
-        attachLayout(TextKeyboard.Name)
+        // Start on the remembered letter layout so there is no flash of the full
+        // keyboard before onStartInput corrects it.
+        attachLayout(letterLayout.takeIf { it in letterKeyboards } ?: TextKeyboard.Name)
         return keyboardView
     }
 
@@ -114,6 +137,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             it.onAttach()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)
             it.onInputMethodUpdate(fcitx.runImmediately { inputMethodEntryCached })
+            it.onPunctuationUpdate(punctuationMapping)
         }
     }
 
@@ -121,8 +145,12 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         val target = to.ifEmpty { lastSymbolType }
         ContextCompat.getMainExecutor(service).execute {
             if (keyboards.containsKey(target)) {
-                if (remember && target != TextKeyboard.Name) {
-                    lastSymbolType = target
+                if (remember) {
+                    if (target in letterKeyboards) {
+                        letterLayout = target
+                    } else {
+                        lastSymbolType = target
+                    }
                 }
                 if (target == currentKeyboardName) return@execute
                 detachCurrentLayout()
@@ -143,7 +171,8 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         val targetLayout = when (info.inputType and InputType.TYPE_MASK_CLASS) {
             InputType.TYPE_CLASS_NUMBER -> NumberKeyboard.Name
             InputType.TYPE_CLASS_PHONE -> NumberKeyboard.Name
-            else -> TextKeyboard.Name
+            // Fall back to the full keyboard if the stored layout is not a letter one.
+            else -> letterLayout.takeIf { it in letterKeyboards } ?: TextKeyboard.Name
         }
         switchLayout(targetLayout, remember = false)
     }
@@ -153,6 +182,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     override fun onPunctuationUpdate(mapping: Map<String, String>) {
+        punctuationMapping = mapping
         currentKeyboard?.onPunctuationUpdate(mapping)
     }
 

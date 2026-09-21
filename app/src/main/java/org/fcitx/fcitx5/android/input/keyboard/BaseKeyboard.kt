@@ -499,16 +499,6 @@ abstract class BaseKeyboard(
         return true
     }
 
-    /**
-     * View IDs of keys on this keyboard that can show a popup. Subclasses override
-     * when their `KeyDef.popup` includes a menu/keyboard. Currently informational;
-     * the canonical popup-item-tap path (PopupComponent → BaseKeyboard.onPopupItemTrigger
-     * → onAction(Source.Popup) + DismissAction) does not consult this list. Kept for
-     * future routing and for subclasses that need to enumerate which of their keys
-     * own a popup.
-     */
-    protected open val popupOwningViewIds: Collection<Int> = emptyList()
-
     open fun onAttach() {
         // do nothing by default
     }
