@@ -84,10 +84,13 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     private var lastSymbolType: String by AppPrefs.getInstance().internal.lastSymbolLayout
 
     /**
-     * Letter layout (Text / NineKey) the user last used. [onStartInput] opens text fields
-     * with it, so a 9-key user is not thrown back to the full keyboard on every field.
+     * Letter layout (Text / NineKey) the user last chose. Empty until they do; the
+     * [NineKeyLayoutMode] gate supplies the default in that case.
      */
     private var letterLayout: String by AppPrefs.getInstance().internal.lastLetterLayout
+
+    /** The user's explicit letter-layout choice, or null if they never made one. */
+    private val letterOverride: String? get() = letterLayout.takeIf { it.isNotEmpty() }
 
     /**
      * Last punctuation mapping. Replayed on layout switch so a freshly attached layout
@@ -171,10 +174,29 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         val targetLayout = when (info.inputType and InputType.TYPE_MASK_CLASS) {
             InputType.TYPE_CLASS_NUMBER -> NumberKeyboard.Name
             InputType.TYPE_CLASS_PHONE -> NumberKeyboard.Name
-            // Fall back to the full keyboard if the stored layout is not a letter one.
-            else -> letterLayout.takeIf { it in letterKeyboards } ?: TextKeyboard.Name
+            // Gate the 9-key layout by the active IME's language code. [NineKeyLayoutMode] decides
+            // whether the gate opens at all: [Off] forces QWERTY; [Always] opens it whenever the
+            // user has chosen it; [ChineseOnly] opens it only for zh IMEs. The user's last choice is
+            // remembered in [letterLayout]; the mode only selects a default first time.
+            else -> chooseLetterLayout(fcitx.runImmediately { inputMethodEntryCached })
         }
         switchLayout(targetLayout, remember = false)
+    }
+
+    /**
+     * Apply [NineKeyLayoutMode] to pick the right letter layout. [letterLayout] records the
+     * user's last choice, so once they long-press `?123` into a different keyboard, this gate
+     * follows that for subsequent text fields.
+     */
+    private fun chooseLetterLayout(ime: InputMethodEntry): String {
+        val applies = when (AppPrefs.getInstance().keyboard.nineKeyLayoutMode.getValue()) {
+            NineKeyLayoutMode.Off -> false
+            NineKeyLayoutMode.ChineseOnly -> ime.languageCode.startsWith("zh")
+            NineKeyLayoutMode.Always -> true
+        }
+        // The gate decides which *kind* of layout is wanted; an explicit user choice
+        // (long-pressing `?123`, or the 9-key's own switch key) overrides it.
+        return if (applies) letterOverride ?: NineKeyKeyboard.Name else TextKeyboard.Name
     }
 
     override fun onImeUpdate(ime: InputMethodEntry) {

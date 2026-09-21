@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
+import org.fcitx.fcitx5.android.input.keyboard.NineKeyLayoutMode
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SwipeSymbolDirection
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
@@ -31,7 +32,9 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
     inner class Internal : ManagedPreferenceInternal(sharedPreferences) {
         val firstRun = bool("first_run", true)
         val lastSymbolLayout = string("last_symbol_layout", PickerWindow.Key.Symbol.name)
-        val lastLetterLayout = string("last_letter_layout", TextKeyboard.Name)
+        // Empty means "the user has not chosen a letter layout yet"; the
+        // NineKeyLayoutMode gate then picks the default.
+        val lastLetterLayout = string("last_letter_layout", "")
         val lastPickerType = string("last_picker_type", PickerWindow.Key.Emoji.name)
         val verboseLog = bool("verbose_log", false)
         val pid = int("pid", 0)
@@ -152,6 +155,11 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
         val expandKeypressArea =
             switch(R.string.expand_keypress_area, "expand_keypress_area", false)
+        val nineKeyLayoutMode = enumList(
+            R.string.nine_key_layout_mode,
+            "nine_key_layout_mode",
+            NineKeyLayoutMode.ChineseOnly
+        )
         val swipeSymbolDirection = enumList(
             R.string.swipe_symbol_behavior,
             "swipe_symbol_behavior",

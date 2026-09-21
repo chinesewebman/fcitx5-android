@@ -318,4 +318,9 @@
     <string name="key_border_stroke">Enable stroke for key border</string>
     <string name="preferred_voice_input">Preferred voice input</string>
     <string name="edit_text_playground">EditText Playground</string>
+
+    <string name="nine_key_layout_mode">9-key layout visibility</string>
+    <string name="nine_key_layout_mode_off">Always off</string>
+    <string name="nine_key_layout_mode_zh_only">Only for Chinese IMEs</string>
+    <string name="nine_key_layout_mode_always">Always on</string>
 </resources>

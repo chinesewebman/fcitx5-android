@@ -4,13 +4,31 @@
  */
 package org.fcitx.fcitx5.android.input.keyboard
 
+/**
+ * When the 9-key layout should replace the default QWERTY text keyboard.
+ *
+ * Defaults to [ChineseOnly]: only switch to the 9-key when the active IME's language
+ * starts with `zh` (matches Wanxiang T9 in `EyaaCai/fcitx5-android-t9`, where the IME must
+ * be rime+wanxiang_t9). [Off] forces QWERTY; [Always] follows the user's last letter
+ * layout preference regardless of language.
+ */
+
 import android.annotation.SuppressLint
 import android.content.Context
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.InputMethodEntry
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceEnum
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.PopupAction
+
+enum class NineKeyLayoutMode(override val stringRes: Int) : ManagedPreferenceEnum {
+    Off(R.string.nine_key_layout_mode_off),
+    ChineseOnly(R.string.nine_key_layout_mode_zh_only),
+    Always(R.string.nine_key_layout_mode_always);
+}
+
 
 /**
  * 9-key (T9 / 九宫格) keyboard layout, modelled on Sogou's current behaviour.
