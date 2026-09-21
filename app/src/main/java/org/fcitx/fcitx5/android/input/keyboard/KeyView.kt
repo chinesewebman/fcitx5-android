@@ -17,6 +17,7 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.ColorInt
@@ -44,6 +45,7 @@ import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.view
+import splitties.views.dsl.core.verticalLayout
 import splitties.views.dsl.core.wrapContent
 import splitties.views.existingOrNewId
 import splitties.views.imageResource
@@ -251,30 +253,66 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
 @SuppressLint("ViewConstructor")
 open class TextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Text) :
     KeyView(ctx, theme, def) {
-    val mainText = view(::AutoScaleTextView) {
-        isClickable = false
-        isFocusable = false
-        background = null
-        text = def.displayText
-        setTextSize(TypedValue.COMPLEX_UNIT_DIP, def.textSize)
-        textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
+
+    /**
+     * The declaration, typed. `KeyView.def` is the base `Appearance` and would hide the
+     * text fields; the constructor parameter only shadows it inside initializers, not in
+     * member functions.
+     */
+    private val textAppearance: KeyDef.Appearance.Text
+        get() = def as KeyDef.Appearance.Text
+
+    /** Applies the key's text styling, so single-line and stacked text look alike. */
+    private fun styledTextView(content: String) = view(::AutoScaleTextView) {
+        styleKeyText(this, content)
+    }
+
+    val mainText = styledTextView(def.displayText)
+
+    /**
+     * Non-empty when the key declares [KeyDef.Appearance.Text.lines]: the face is a
+     * vertical stack of these instead of a single line. `AutoScaleTextView` measures and
+     * draws one line, so multi-line [KeyDef.Appearance.Text.displayText] would silently
+     * collapse onto a single row.
+     */
+    val stackedTexts: List<AutoScaleTextView> =
+        def.lines?.map(::styledTextView) ?: emptyList()
+
+    init {
+        appearanceView.apply {
+            if (stackedTexts.isEmpty()) {
+                add(mainText, lParams(wrapContent, wrapContent) {
+                    centerInParent()
+                })
+            } else {
+                add(
+                    verticalLayout {
+                        gravity = Gravity.CENTER
+                        stackedTexts.forEach { add(it, lParams(wrapContent, wrapContent)) }
+                    },
+                    lParams(wrapContent, wrapContent) { centerInParent() }
+                )
+            }
+        }
+    }
+
+    private fun styleKeyText(v: AutoScaleTextView, content: String) {
+        val appearance = textAppearance
+        v.isClickable = false
+        v.isFocusable = false
+        v.background = null
+        v.text = content
+        v.setTextSize(TypedValue.COMPLEX_UNIT_DIP, appearance.textSize)
+        v.textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
         // keep original typeface, apply textStyle only
-        setTypeface(typeface, def.textStyle)
-        setTextColor(
-            when (def.variant) {
+        v.setTypeface(v.typeface, appearance.textStyle)
+        v.setTextColor(
+            when (appearance.variant) {
                 Variant.Normal -> theme.keyTextColor
                 Variant.AltForeground, Variant.Alternative -> theme.altKeyTextColor
                 Variant.Accent -> theme.accentKeyTextColor
             }
         )
-    }
-
-    init {
-        appearanceView.apply {
-            add(mainText, lParams(wrapContent, wrapContent) {
-                centerInParent()
-            })
-        }
     }
 }
 

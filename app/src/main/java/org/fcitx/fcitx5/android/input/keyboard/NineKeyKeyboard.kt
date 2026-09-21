@@ -166,8 +166,14 @@ class NineKeyKeyboard(
     override fun onPunctuationUpdate(mapping: Map<String, String>) {
         punctuationMapping = mapping
         val symbols = punctKeyDef?.symbols ?: return
-        findViewById<TextKeyView>(R.id.button_ninekey_punct)?.mainText?.text =
-            symbols.joinToString("\n") { transformPunctuation(it) }
+        val view = findViewById<TextKeyView>(R.id.button_ninekey_punct) ?: return
+        if (view.stackedTexts.isEmpty()) {
+            view.mainText.text = transformPunctuation(symbols.first())
+        } else {
+            view.stackedTexts.forEachIndexed { i, tv ->
+                tv.text = transformPunctuation(symbols.getOrElse(i) { "" })
+            }
+        }
     }
 
     private fun transformPunctuation(p: String) =

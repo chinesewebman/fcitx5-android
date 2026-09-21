@@ -70,7 +70,8 @@ class NineKeyPunctuationKey(
     percentWidth: Float = 3f / 20f,
 ) : KeyDef(
     Appearance.Text(
-        displayText = symbols.joinToString("\n"),
+        displayText = symbols.first(),
+        lines = symbols,
         textSize = 15f,
         percentWidth = percentWidth,
         variant = KeyDef.Appearance.Variant.Normal,

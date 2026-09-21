@@ -52,7 +52,13 @@ open class KeyDef(
             border: Border = Border.Default,
             margin: Boolean = true,
             viewId: Int = -1,
-            soundEffect: InputFeedbacks.SoundEffect = InputFeedbacks.SoundEffect.Standard
+            soundEffect: InputFeedbacks.SoundEffect = InputFeedbacks.SoundEffect.Standard,
+            /**
+             * When set, the key renders these as a vertical stack instead of
+             * [displayText] on one line — for tall keys whose face lists several
+             * glyphs (e.g. the 9-key punctuation column).
+             */
+            val lines: List<String>? = null
         ) : Appearance(percentWidth, variant, border, margin, viewId, soundEffect)
 
         class AltText(
