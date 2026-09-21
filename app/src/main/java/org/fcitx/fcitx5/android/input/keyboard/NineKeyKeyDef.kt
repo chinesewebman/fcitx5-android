@@ -17,14 +17,15 @@ import org.fcitx.fcitx5.android.input.picker.PickerWindow
  * 9-key alphabet key — `ABC`/`DEF`/… with the T9 digit as its small alt label, the same
  * idiom the full keyboard uses for `Q`/`1`.
  *
- * The letter is chosen by multi-tap: [NineKeyKeyboard] advances through [letters] on
- * every press and commits the pending letter to fcitx5 after a short idle. There is
- * deliberately no popup menu — a menu would swallow the next tap (see
- * `CustomGestureView`'s consumed-gesture handling) and break cycling.
+ * Each press sends [letters]`[0]` to fcitx5 as a single keystroke — there is no
+ * multi-tap cycling on this key. fcitx5's spelling engine (pinyin, etc.) accumulates the
+ * keystrokes into a preedit and surfaces candidate words/phrases. Tapping the same key
+ * twice therefore genuinely means two letters; the engine disambiguates against its
+ * dictionary. This matches Sogou's current 9-key behaviour.
  *
- * [Behavior.Press] carries a [KeyAction.CommitAction] holding the key's first letter as
- * a press *trigger* only; [NineKeyKeyboard.onAction] intercepts it to identify the key
- * and never commits that action as-is.
+ * [Behavior.Press] is [KeyAction.FcitxKeyAction] so the letter goes through to the
+ * daemon via `CommonKeyActionListener`'s `sendKey` branch instead of being committed
+ * to the editor as plain text (which [KeyAction.CommitAction] would do).
  *
  * @param letters        Full letter combo shown on the key (e.g. "ABC", "DEF")
  * @param digit          T9 digit shown as the alt label (e.g. "2" for ABC)
@@ -48,8 +49,8 @@ class NineKeyAlphabetKey(
         viewId = viewIdRes
     ),
     behaviors = setOf(
-        // Press trigger only — intercepted in NineKeyKeyboard.onAction(CommitAction).
-        KeyDef.Behavior.Press(KeyAction.CommitAction(letters.first().toString()))
+        // Each press emits the first letter of the combo; ambiguity lives in the engine.
+        KeyDef.Behavior.Press(KeyAction.FcitxKeyAction(letters.first().toString()))
     )
 )
 
