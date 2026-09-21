@@ -102,3 +102,7 @@ lint/tmp/
 
 ### Kotlin ###
 .kotlin/
+
+### CodeGraph local index ###
+# Tool-generated, machine-local: the db is ~20MB and rebuilt from source.
+.codegraph/
